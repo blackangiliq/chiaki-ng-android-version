@@ -297,7 +297,16 @@ void QmlMainWindow::show()
             showNormal();
         }
         else
-            showMaximized();
+        {
+            // Default to a compact window size (800x600) that fits most screens
+            resize(800, 600);
+            // Center the window on screen
+            QRect screenGeometry = QGuiApplication::primaryScreen()->availableGeometry();
+            int x = (screenGeometry.width() - 800) / 2;
+            int y = (screenGeometry.height() - 600) / 2;
+            setPosition(x, y);
+            showNormal();
+        }
         setWindowAdjustable(true);
     }
 }
