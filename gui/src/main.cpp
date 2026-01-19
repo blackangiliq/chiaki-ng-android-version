@@ -146,13 +146,6 @@ int real_main(int argc, char *argv[])
 		QGuiApplication::setDesktopFileName("lu");
 
 	qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
-#if defined(Q_OS_WIN)
-	const size_t cSize = strlen(argv[0])+1;
-	wchar_t wc[cSize];
-	mbstowcs (wc, argv[0], cSize);
-	QString import_path = QFileInfo(QString::fromWCharArray(wc)).dir().absolutePath() + "/qml";
-	qputenv("QML_IMPORT_PATH", import_path.toUtf8());
-#endif
 #if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
 	qputenv("ANV_VIDEO_DECODE", "1");
 	qputenv("RADV_PERFTEST", "video_decode");
@@ -182,6 +175,12 @@ int real_main(int argc, char *argv[])
 	QtWebEngineQuick::initialize();
 #endif
 	QApplication app(argc, argv);
+
+#if defined(Q_OS_WIN)
+	// Set QML import path after QApplication is created for proper Unicode/Arabic path support
+	QString import_path = QCoreApplication::applicationDirPath() + "/qml";
+	qputenv("QML_IMPORT_PATH", import_path.toUtf8());
+#endif
 
 	// Urscript Logo as app icon
 	QGuiApplication::setWindowIcon(QIcon(":/icons/urscript_logo.png"));
