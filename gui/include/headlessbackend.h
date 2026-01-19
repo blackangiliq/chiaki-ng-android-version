@@ -77,6 +77,10 @@ private:
     StreamSession *m_session = nullptr;
     
     QList<DiscoveryHost> m_discoveryHosts;
+    
+    // State flags to prevent race conditions from API double-calls
+    bool m_connectInProgress = false;
+    bool m_disconnectInProgress = false;
 };
 
 #endif // CHIAKI_HEADLESSBACKEND_H

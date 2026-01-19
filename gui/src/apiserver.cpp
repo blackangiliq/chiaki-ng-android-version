@@ -357,6 +357,20 @@ QJsonDocument ApiServer::handlePostConnect(const QJsonObject &body)
     
     QJsonObject response;
     
+    // Check if already streaming
+    StreamSession *existingSession = nullptr;
+    if (headlessBackend) {
+        existingSession = headlessBackend->session();
+    } else if (backend) {
+        existingSession = backend->qmlSession();
+    }
+    
+    if (existingSession) {
+        response["success"] = false;
+        response["error"] = "Already connected. Disconnect first before connecting to another host.";
+        return QJsonDocument(response);
+    }
+    
     if (index < 0) {
         // Find by nickname or address
         QString address = body["address"].toString();
@@ -398,6 +412,20 @@ QJsonDocument ApiServer::handlePostConnect(const QJsonObject &body)
 QJsonDocument ApiServer::handlePostDisconnect()
 {
     QJsonObject response;
+    
+    // Check if there's an active session first
+    StreamSession *existingSession = nullptr;
+    if (headlessBackend) {
+        existingSession = headlessBackend->session();
+    } else if (backend) {
+        existingSession = backend->qmlSession();
+    }
+    
+    if (!existingSession) {
+        response["success"] = false;
+        response["error"] = "No active session to disconnect";
+        return QJsonDocument(response);
+    }
     
     if (headlessBackend) {
         headlessBackend->stopSession(false);

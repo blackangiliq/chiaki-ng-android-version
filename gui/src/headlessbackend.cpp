@@ -239,6 +239,19 @@ void HeadlessBackend::connectToHost(int index, QString nickname)
 {
     Q_UNUSED(nickname);
     
+    // Prevent double connect calls
+    if (m_connectInProgress) {
+        qWarning() << "Connect already in progress, ignoring duplicate call";
+        return;
+    }
+    
+    // If already streaming, ignore
+    if (m_session) {
+        qWarning() << "Session already active, disconnect first";
+        emit error("Connection Error", "Already connected. Disconnect first.");
+        return;
+    }
+    
     DisplayServer server = displayServerAt(index);
     if (!server.valid) {
         qWarning() << "Invalid host index:" << index;
@@ -251,6 +264,8 @@ void HeadlessBackend::connectToHost(int index, QString nickname)
         emit error("Connection Error", "Host not registered");
         return;
     }
+    
+    m_connectInProgress = true;
     
     StreamSessionConnectInfo connect_info(
         m_settings,
@@ -268,13 +283,15 @@ void HeadlessBackend::connectToHost(int index, QString nickname)
     );
     
     createSession(connect_info);
+    m_connectInProgress = false;
 }
 
 void HeadlessBackend::createSession(const StreamSessionConnectInfo &connect_info)
 {
+    // Safety check - should not happen due to connectToHost check
     if (m_session) {
-        qWarning() << "Session already exists, stopping first";
-        stopSession(false);
+        qWarning() << "Session already exists, cannot create new one";
+        return;
     }
     
     try {
@@ -349,8 +366,22 @@ void HeadlessBackend::processFrame()
 
 void HeadlessBackend::stopSession(bool sleep)
 {
-    if (!m_session)
+    // Prevent double disconnect calls
+    if (m_disconnectInProgress) {
+        qWarning() << "Disconnect already in progress, ignoring duplicate call";
         return;
+    }
+    
+    if (!m_session) {
+        qWarning() << "No active session to disconnect";
+        return;
+    }
+    
+    m_disconnectInProgress = true;
+    
+    // Disconnect signals first to prevent onSessionQuit from being called
+    disconnect(m_session, &StreamSession::SessionQuit, 
+               this, &HeadlessBackend::onSessionQuit);
     
     if (sleep) {
         m_session->GoToBed();
@@ -361,12 +392,14 @@ void HeadlessBackend::stopSession(bool sleep)
     // Wait a bit for clean shutdown
     QThread::msleep(100);
     
-    delete m_session;
+    m_session->deleteLater();
     m_session = nullptr;
     
     FrameSharing::instance().shutdown();
     
     emit sessionChanged(nullptr);
+    
+    m_disconnectInProgress = false;
     
     qInfo() << "Stream session stopped";
 }
@@ -376,12 +409,23 @@ void HeadlessBackend::onSessionQuit(ChiakiQuitReason reason, const QString &reas
     Q_UNUSED(reason);
     qInfo() << "Session quit:" << reason_str;
     
+    // Safety check - session might already be cleaned up by stopSession
+    if (!m_session) {
+        qWarning() << "onSessionQuit called but session already null";
+        return;
+    }
+    
+    // Prevent stopSession from running after this
+    m_disconnectInProgress = true;
+    
     m_session->deleteLater();
     m_session = nullptr;
     
     FrameSharing::instance().shutdown();
     
     emit sessionChanged(nullptr);
+    
+    m_disconnectInProgress = false;
 }
 
 void HeadlessBackend::wakeUpHost(int index, QString nickname)
