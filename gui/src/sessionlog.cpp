@@ -31,11 +31,11 @@ SessionLog::SessionLog(StreamSession *session, uint32_t level_mask, const QStrin
 		{
 			delete file;
 			file = nullptr;
-			CHIAKI_LOGI(&log, "Failed to open file %s for logging", filename.toLocal8Bit().constData());
+			CHIAKI_LOGI(&log, "Failed to open file %s for logging", filename.toUtf8().constData());
 		}
 		else
 		{
-			CHIAKI_LOGI(&log, "Logging to file %s", filename.toLocal8Bit().constData());
+			CHIAKI_LOGI(&log, "Logging to file %s", filename.toUtf8().constData());
 		}
 	}
 
