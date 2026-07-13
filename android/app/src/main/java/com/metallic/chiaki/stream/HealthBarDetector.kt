@@ -21,7 +21,11 @@ data class DetectionResult(
 	val leftN: Float,
 	val topN: Float,
 	val rightN: Float,
-	val bottomN: Float
+	val bottomN: Float,
+	val analyzeMs: Float = 0f,   // wall time to analyze this frame (color mask + shape), ms
+	val detectFps: Float = 0f,   // measured detection rate (frames analyzed per second)
+	val roiW: Int = 0,           // cropped ROI (FOV) size actually scanned, px
+	val roiH: Int = 0
 )
 {
 	val centerXN get() = (leftN + rightN) * 0.5f
@@ -44,11 +48,14 @@ data class DetectionResult(
  */
 class HealthBarDetector(
 	private val surfaceView: SurfaceView,
-	private val fovWidthPercent: Int,
-	private val fovHeightPercent: Int,
+	fovWidthPercentInit: Int,
+	fovHeightPercentInit: Int,
 	private val onResult: (DetectionResult?) -> Unit
 )
 {
+	// Mutable so the in-stream tuning panel can change the FOV live (read fresh every analyze()).
+	@Volatile var fovWidthPercent = fovWidthPercentInit
+	@Volatile var fovHeightPercent = fovHeightPercentInit
 	object Config
 	{
 		/** How often to grab and analyze a frame (ms). ~15 Hz — the 60 Hz aim loop smooths between these. */
@@ -68,12 +75,16 @@ class HealthBarDetector(
 		const val CLOSE_RADIUS = 2
 
 		// --- Bar shape (as fractions of the frame so they are resolution independent). ---
-		const val MIN_WIDTH_FRAC = 0.05f    // bar must span at least 5% of the frame width
+		const val MIN_WIDTH_FRAC = 0.035f   // bar must span at least 3.5% of the frame width (allows depleted bars)
 		const val MIN_HEIGHT_FRAC = 0.004f  // ~3px at 720p
 		const val MAX_HEIGHT_FRAC = 0.06f   // ~40px at 720p
-		const val MIN_ASPECT = 4.0f         // width / height, "thin horizontal"
-		const val MIN_FILL_RATIO = 0.5f     // fraction of the bounding box that is the target color
-		const val MIN_CORNERS = 2           // how many of the 4 corners must be a dominant target pixel
+		const val MIN_ASPECT = 3.0f         // width / height, "thin horizontal" (relaxed for short/depleted bars)
+		// Fraction of the bounding box that is the target color. Real health bars have RULER TICKS /
+		// segment gaps / partial fill, so they are NOT 50% solid — a strict 0.5 rejected them (log said
+		// "not solid"). 0.25 accepts a ticked/partly-filled bar while still rejecting scattered noise
+		// (which also fails the aspect gate).
+		const val MIN_FILL_RATIO = 0.25f
+		const val MIN_CORNERS = 1           // at least one corner a dominant target pixel (anti-aliased edges)
 	}
 
 	private var thread: HandlerThread? = null
@@ -89,6 +100,14 @@ class HealthBarDetector(
 	private var mask: BooleanArray? = null
 	private var maskTmp: BooleanArray? = null   // scratch for the morphological close
 	private var stack: IntArray? = null
+
+	// Processing-speed stats (shown in the on-screen HUD). "As fast as possible" by default: 0ms delay =
+	// analyze back-to-back as PixelCopy delivers frames (uses whatever the device/stream can give).
+	@Volatile var intervalMs = 0L
+	private var lastResultNanos = 0L
+	private var smoothedFps = 0f
+	private var lastRoiW = 0
+	private var lastRoiH = 0
 
 	fun start()
 	{
@@ -124,7 +143,10 @@ class HealthBarDetector(
 	private fun scheduleNext()
 	{
 		if(running)
-			handler?.postDelayed(this::capture, Config.INTERVAL_MS)
+		{
+			if(intervalMs <= 0L) handler?.post(this::capture)
+			else handler?.postDelayed(this::capture, intervalMs)
+		}
 	}
 
 	private fun capture()
@@ -151,7 +173,17 @@ class HealthBarDetector(
 				if(gen == generation && running)
 				{
 					if(result == PixelCopy.SUCCESS)
-						onResult(analyze(bmp))
+						{
+						val t0 = System.nanoTime()
+						val res = analyze(bmp)
+						val analyzeMs = (System.nanoTime() - t0) / 1_000_000f
+						val nowN = System.nanoTime()
+						val instFps = if(lastResultNanos != 0L && nowN > lastResultNanos)
+							1_000_000_000f / (nowN - lastResultNanos) else 0f
+						lastResultNanos = nowN
+						smoothedFps = if(smoothedFps <= 0f) instFps else smoothedFps * 0.8f + instFps * 0.2f
+						onResult(res.copy(analyzeMs = analyzeMs, detectFps = smoothedFps, roiW = lastRoiW, roiH = lastRoiH))
+					}
 					scheduleNext()
 				}
 			}, h)
@@ -219,6 +251,7 @@ class HealthBarDetector(
 		// Region of interest: a centered FOV. Restricting all work to it speeds up the whole pass.
 		val roiW = (w * fovWidthPercent / 100).coerceIn(1, w)
 		val roiH = (h * fovHeightPercent / 100).coerceIn(1, h)
+		lastRoiW = roiW; lastRoiH = roiH
 		val x0 = (w - roiW) / 2
 		val y0 = (h - roiH) / 2
 		val x1 = x0 + roiW

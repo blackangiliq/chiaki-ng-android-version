@@ -74,9 +74,12 @@ class AimAssist
 		}
 
 		// Aim point: horizontally the bar centre; vertically just below the bar (the head), offset by a
-		// fraction of the bar width so the drop shrinks with distance (far bar = narrow = small drop).
+		// multiple of the bar width so the drop shrinks with distance (far bar = narrow = small drop).
+		// The ×2.5 base mirrors the desktop app's head-offset ratio (aimOffsetY/100 × 2.5); without it a
+		// 60% setting only dropped ~4% of the frame and the aim point sat on the bar (≈ screen centre) so
+		// there was nothing to pull toward. Tunable live via the in-stream panel.
 		val aimX = r.centerXN
-		val aimY = (r.bottomN + headOffset * r.widthN).coerceIn(0f, 1f)
+		val aimY = (r.bottomN + headOffset * 2.5f * r.widthN).coerceIn(0f, 1f)
 
 		// Input-position smoothing: snap on a big jump (new target) so it doesn't slide across the
 		// screen; otherwise low-pass to absorb the per-frame detection jitter.

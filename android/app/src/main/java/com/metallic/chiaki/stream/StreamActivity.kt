@@ -10,6 +10,8 @@ import android.os.*
 import android.util.Log
 import android.view.*
 import android.widget.EditText
+import android.widget.SeekBar
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -114,6 +116,7 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		viewModel.session.attachToSurfaceView(binding.surfaceView)
 		viewModel.session.state.observe(this, Observer { this.stateChanged(it) })
 		adjustStreamViewAspect()
+		setupTuningPanel()
 
 		if(Preferences(this).rumbleEnabled)
 		{
@@ -180,6 +183,58 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		}
 		healthBarDetector?.start()
 		startAimLoop()
+	}
+
+	/**
+	 * In-stream tuning: the ⚙ button toggles a panel of sliders that apply live (FOV width/height, aim
+	 * strength/speed, head offset) — no need to leave the stream. Each change is applied to the running
+	 * detector/aim immediately and persisted to preferences.
+	 */
+	private fun setupTuningPanel()
+	{
+		val prefs = Preferences(this)
+
+		binding.tuningToggle.setOnClickListener {
+			binding.tuningPanel.visibility =
+				if(binding.tuningPanel.isGone) View.VISIBLE else View.GONE
+		}
+
+		fun wire(sb: SeekBar, tv: TextView, label: String, min: Int, initial: Int, apply: (Int) -> Unit)
+		{
+			val start = initial.coerceIn(min, sb.max)
+			sb.progress = start
+			tv.text = "$label: $start"
+			sb.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener
+			{
+				override fun onProgressChanged(s: SeekBar, progress: Int, fromUser: Boolean)
+				{
+					val v = progress.coerceIn(min, s.max)
+					tv.text = "$label: $v"
+					apply(v)
+				}
+				override fun onStartTrackingTouch(s: SeekBar) {}
+				override fun onStopTrackingTouch(s: SeekBar) {}
+			})
+		}
+
+		wire(binding.sbFovW, binding.tvFovW, "FOV width", 10, prefs.fovWidthPercent) { v ->
+			prefs.fovWidthPercent = v
+			healthBarDetector?.fovWidthPercent = v
+			binding.detectionOverlay.fovWidthPercent = v
+		}
+		wire(binding.sbFovH, binding.tvFovH, "FOV height", 10, prefs.fovHeightPercent) { v ->
+			prefs.fovHeightPercent = v
+			healthBarDetector?.fovHeightPercent = v
+			binding.detectionOverlay.fovHeightPercent = v
+		}
+		wire(binding.sbStrength, binding.tvStrength, "Aim speed", 10, prefs.aimStrengthPercent) { v ->
+			prefs.aimStrengthPercent = v
+			aimAssist?.strength = v / 100f
+		}
+		wire(binding.sbHeadOffset, binding.tvHeadOffset, "Head offset", 0, prefs.aimHeadOffsetPercent) { v ->
+			prefs.aimHeadOffsetPercent = v
+			aimAssist?.headOffset = v / 100f
+		}
 	}
 
 	/** 60 Hz loop: sample [aimAssist] and push the smoothed stick, only when it changed. */

@@ -126,4 +126,79 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
+    <!-- Always-visible toggle that opens the live tuning panel without leaving the stream. -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/tuningToggle"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|top"
+        android:layout_margin="8dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:text="⚙"
+        android:textSize="16sp"
+        android:textColor="@color/stream_text"
+        app:strokeColor="@color/stream_text"/>
+
+    <!-- Live tuning: FOV + aim speed/offset, adjusted while streaming. Hidden until ⚙ is tapped. -->
+    <ScrollView
+        android:id="@+id/tuningPanel"
+        android:layout_width="300dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_margin="12dp"
+        android:background="@color/stream_overlay_background"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Aim / Detection Tuning"
+                android:textColor="@color/stream_text"
+                android:textStyle="bold"
+                android:textSize="15sp"
+                android:paddingBottom="6dp"/>
+
+            <TextView android:id="@+id/tvFovW"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/stream_text" android:paddingTop="6dp"/>
+            <SeekBar android:id="@+id/sbFovW"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:max="100"/>
+
+            <TextView android:id="@+id/tvFovH"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/stream_text" android:paddingTop="6dp"/>
+            <SeekBar android:id="@+id/sbFovH"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:max="100"/>
+
+            <TextView android:id="@+id/tvStrength"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/stream_text" android:paddingTop="6dp"/>
+            <SeekBar android:id="@+id/sbStrength"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:max="100"/>
+
+            <TextView android:id="@+id/tvHeadOffset"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/stream_text" android:paddingTop="6dp"/>
+            <SeekBar android:id="@+id/sbHeadOffset"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:max="200"/>
+
+        </LinearLayout>
+    </ScrollView>
+
 </FrameLayout>

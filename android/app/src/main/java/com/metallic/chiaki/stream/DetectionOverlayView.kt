@@ -147,11 +147,13 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 			canvas.drawCircle(ax, ay, 10f * density, aimRingPaint)
 		}
 
-		// Always-on debug HUD so it's obvious the detector is running and what it sees.
+		// Always-on debug HUD: processing speed (rate + per-frame analyze time + cropped ROI size) so the
+		// user can see how fast the color detection on the ROI runs, plus what it currently sees.
 		val status = if(r.isBar) "BAR FOUND"
 			else if(r.hasBox) "no bar (${r.reason})"
 			else "no green"
-		drawTextWithBg(canvas, "DETECT ON   green: ${r.targetPixels}px   $status",
+		val perf = "%.0fHz  %.1fms  ROI %dx%d".format(r.detectFps, r.analyzeMs, r.roiW, r.roiH)
+		drawTextWithBg(canvas, "DETECT  $perf   green:${r.targetPixels}px   $status",
 			6f * density, 6f * density + (textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent), h)
 	}
 
