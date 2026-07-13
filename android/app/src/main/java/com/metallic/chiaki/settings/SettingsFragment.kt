@@ -28,6 +28,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
 		preferences.motionEnabledKey -> preferences.motionEnabled
 		preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled
+		preferences.colorDetectionEnabledKey -> preferences.colorDetectionEnabled
+		preferences.controllerOverlayEnabledKey -> preferences.controllerOverlayEnabled
 		else -> defValue
 	}
 
@@ -40,6 +42,24 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
 			preferences.motionEnabledKey -> preferences.motionEnabled = value
 			preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled = value
+			preferences.colorDetectionEnabledKey -> preferences.colorDetectionEnabled = value
+			preferences.controllerOverlayEnabledKey -> preferences.controllerOverlayEnabled = value
+		}
+	}
+
+	override fun getInt(key: String?, defValue: Int) = when(key)
+	{
+		preferences.fovWidthPercentKey -> preferences.fovWidthPercent
+		preferences.fovHeightPercentKey -> preferences.fovHeightPercent
+		else -> defValue
+	}
+
+	override fun putInt(key: String?, value: Int)
+	{
+		when(key)
+		{
+			preferences.fovWidthPercentKey -> preferences.fovWidthPercent = value
+			preferences.fovHeightPercentKey -> preferences.fovHeightPercent = value
 		}
 	}
 
