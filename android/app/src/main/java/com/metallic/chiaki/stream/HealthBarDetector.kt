@@ -76,16 +76,14 @@ class HealthBarDetector(
 		const val CLOSE_RADIUS = 2
 
 		// --- Bar shape (as fractions of the frame so they are resolution independent). ---
+		// Bar shape (fractions of the frame so they are resolution independent). These mirror the desktop
+		// app's health-bar test: a wide, thin rectangle whose corners contain the colour. There is
+		// deliberately NO fill/solidity gate — real health bars are ticked / partly filled.
 		const val MIN_WIDTH_FRAC = 0.035f   // bar must span at least 3.5% of the frame width (allows depleted bars)
 		const val MIN_HEIGHT_FRAC = 0.004f  // ~3px at 720p
 		const val MAX_HEIGHT_FRAC = 0.06f   // ~40px at 720p
-		const val MIN_ASPECT = 3.0f         // width / height, "thin horizontal" (relaxed for short/depleted bars)
-		// Fraction of the bounding box that is the target color. Real health bars have RULER TICKS /
-		// segment gaps / partial fill, so they are NOT 50% solid — a strict 0.5 rejected them (log said
-		// "not solid"). 0.25 accepts a ticked/partly-filled bar while still rejecting scattered noise
-		// (which also fails the aspect gate).
-		const val MIN_FILL_RATIO = 0.25f
-		const val MIN_CORNERS = 1           // at least one corner a dominant target pixel (anti-aliased edges)
+		const val MIN_ASPECT = 3.5f         // width / height, "thin horizontal" (desktop uses 4; 3.5 for depleted bars)
+		const val MIN_CORNERS = 2           // corners (neighbourhood-searched) that must contain the colour (desktop = 2)
 	}
 
 	private var thread: HandlerThread? = null
@@ -328,8 +326,7 @@ class HealthBarDetector(
 				val bh = maxY - minY + 1
 				val isBar = bw >= minWidthPx && bh >= minHeightPx && bh <= maxHeightPx &&
 						bw.toFloat() / bh >= Config.MIN_ASPECT &&
-						count.toFloat() / (bw * bh) >= Config.MIN_FILL_RATIO &&
-						cornersOk(px, w, minX, minY, maxX, maxY)
+						cornersOk(px, w, h, minX, minY, maxX, maxY)
 				if(isBar && count > barCount)
 				{
 					barCount = count
@@ -346,14 +343,13 @@ class HealthBarDetector(
 			val dbh = loB - loT + 1
 			val fill = loCount.toFloat() / (dbw * dbh)
 			val asp = if(dbh > 0) dbw.toFloat() / dbh else 0f
-			val cor = countCorners(px, w, loL, loT, loR, loB)
+			val cor = countCorners(px, w, h, loL, loT, loR, loB)
 			Log.d("HBDetect", ("blob %dx%d asp=%.2f fill=%.2f cor=%d | w>=%.0f?%b h?%b asp>=%.1f?%b " +
-				"fill>=%.2f?%b cor>=%d?%b => isBar=%b | pos=(%.2f,%.2f) green=%d roi=%dx%d").format(
+				"cor>=%d?%b => isBar=%b | pos=(%.2f,%.2f) green=%d roi=%dx%d").format(
 				dbw, dbh, asp, fill, cor,
 				minWidthPx, dbw >= minWidthPx,
 				(dbh >= minHeightPx && dbh <= maxHeightPx),
 				Config.MIN_ASPECT, asp >= Config.MIN_ASPECT,
-				Config.MIN_FILL_RATIO, fill >= Config.MIN_FILL_RATIO,
 				Config.MIN_CORNERS, cor >= Config.MIN_CORNERS,
 				barCount >= 0,
 				(loL + loR) * 0.5f / w, (loT + loB) * 0.5f / h, targetPixels, lastRoiW, lastRoiH))
@@ -366,7 +362,7 @@ class HealthBarDetector(
 
 		if(loCount >= 0)
 		{
-			val reason = rejectReason(px, w, loL, loT, loR, loB, loCount, minWidthPx, minHeightPx, maxHeightPx)
+			val reason = rejectReason(px, w, h, loL, loT, loR, loB, minWidthPx, minHeightPx, maxHeightPx)
 			return DetectionResult(targetPixels, true, false, reason,
 				loL.toFloat() / w, loT.toFloat() / h, (loR + 1).toFloat() / w, (loB + 1).toFloat() / h)
 		}
@@ -374,27 +370,54 @@ class HealthBarDetector(
 		return DetectionResult(targetPixels, false, false, "no target color", 0f, 0f, 0f, 0f)
 	}
 
-	private fun cornersOk(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Boolean =
-		countCorners(px, w, minX, minY, maxX, maxY) >= Config.MIN_CORNERS
+	private fun cornersOk(px: IntArray, w: Int, h: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Boolean =
+		countCorners(px, w, h, minX, minY, maxX, maxY) >= Config.MIN_CORNERS
 
-	/** How many of the 4 (slightly inset) corners of the box are a dominant target pixel. */
-	private fun countCorners(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Int
+	/**
+	 * How many of the 4 (slightly inset) corners of the box have the target colour *nearby*. Mirrors
+	 * the desktop app: it searches a small neighbourhood around each corner (not a single pixel) for the
+	 * colour and counts a corner if any is found — robust to anti-aliasing / ticks at the bar ends.
+	 */
+	private fun countCorners(px: IntArray, w: Int, h: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Int
 	{
 		val bw = maxX - minX + 1
 		val bh = maxY - minY + 1
 		val insetX = minOf(2, (bw - 1) / 4)
 		val insetY = minOf(1, (bh - 1) / 2)
 		var corners = 0
-		if(isDominantAt(px, w, minX + insetX, minY + insetY)) corners++
-		if(isDominantAt(px, w, maxX - insetX, minY + insetY)) corners++
-		if(isDominantAt(px, w, minX + insetX, maxY - insetY)) corners++
-		if(isDominantAt(px, w, maxX - insetX, maxY - insetY)) corners++
+		if(cornerHasTarget(px, w, h, minX + insetX, minY + insetY)) corners++
+		if(cornerHasTarget(px, w, h, maxX - insetX, minY + insetY)) corners++
+		if(cornerHasTarget(px, w, h, minX + insetX, maxY - insetY)) corners++
+		if(cornerHasTarget(px, w, h, maxX - insetX, maxY - insetY)) corners++
 		return corners
 	}
 
+	/** True if any pixel within a small (±2) neighbourhood of (x,y) is the target colour. */
+	private fun cornerHasTarget(px: IntArray, w: Int, h: Int, x: Int, y: Int): Boolean
+	{
+		val r = 2
+		var yy = maxOf(0, y - r)
+		val yEnd = minOf(h - 1, y + r)
+		val xStart = maxOf(0, x - r)
+		val xEnd = minOf(w - 1, x + r)
+		while(yy <= yEnd)
+		{
+			val row = yy * w
+			var xx = xStart
+			while(xx <= xEnd)
+			{
+				val c = px[row + xx]
+				if(isTarget((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)) return true
+				xx++
+			}
+			yy++
+		}
+		return false
+	}
+
 	/** Human-readable reason the largest blob failed the bar filter (for the debug HUD). */
-	private fun rejectReason(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int,
-							 count: Int, minWidthPx: Float, minHeightPx: Float, maxHeightPx: Float): String
+	private fun rejectReason(px: IntArray, w: Int, h: Int, minX: Int, minY: Int, maxX: Int, maxY: Int,
+							 minWidthPx: Float, minHeightPx: Float, maxHeightPx: Float): String
 	{
 		val bw = maxX - minX + 1
 		val bh = maxY - minY + 1
@@ -404,8 +427,7 @@ class HealthBarDetector(
 			bh < minHeightPx -> "too thin"
 			bh > maxHeightPx -> "too tall"
 			bw.toFloat() / bh < Config.MIN_ASPECT -> "not horizontal"
-			count.toFloat() / (bw * bh) < Config.MIN_FILL_RATIO -> "not solid"
-			!cornersOk(px, w, minX, minY, maxX, maxY) -> "edges not pure green"
+			!cornersOk(px, w, h, minX, minY, maxX, maxY) -> "edges not green"
 			else -> "OK"
 		}
 	}

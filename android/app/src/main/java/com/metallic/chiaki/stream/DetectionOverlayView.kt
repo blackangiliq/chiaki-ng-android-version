@@ -36,25 +36,6 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 
 	private val density = resources.displayMetrics.density
 
-	private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-		style = Paint.Style.STROKE
-		strokeWidth = 2f * density
-		color = MARKER_COLOR
-	}
-
-	// Largest green region that did NOT qualify as a bar (shown so the user sees what's detected).
-	private val candidatePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-		style = Paint.Style.STROKE
-		strokeWidth = 1.5f * density
-		color = CANDIDATE_COLOR
-	}
-
-	private val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-		style = Paint.Style.STROKE
-		strokeWidth = 1.5f * density
-		color = MARKER_COLOR
-	}
-
 	private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		color = Color.WHITE
 		textSize = 13f * density
@@ -113,32 +94,8 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 			canvas.drawRect(fl, ft, fl + fw, ft + fh, fovPaint)
 		}
 
-		// Draw the detected region: bright cyan if it qualifies as a bar, dim orange otherwise.
-		if(r.hasBox)
-		{
-			val left = r.leftN * w
-			val top = r.topN * h
-			val right = r.rightN * w
-			val bottom = r.bottomN * h
-
-			canvas.drawRect(left, top, right, bottom, if(r.isBar) boxPaint else candidatePaint)
-
-			if(r.isBar)
-			{
-				val cx = (left + right) * 0.5f
-				val cy = (top + bottom) * 0.5f
-				val crossLen = 8f * density
-				canvas.drawLine(cx - crossLen, cy, cx + crossLen, cy, crossPaint)
-				canvas.drawLine(cx, cy - crossLen, cx, cy + crossLen, crossPaint)
-
-				val vx = if(videoWidth > 0) (r.centerXN * videoWidth).toInt() else cx.toInt()
-				val vy = if(videoHeight > 0) (r.centerYN * videoHeight).toInt() else cy.toInt()
-				val vw = if(videoWidth > 0) (r.widthN * videoWidth).toInt() else (right - left).toInt()
-				drawTextWithBg(canvas, "x=$vx  y=$vy  w=$vw", left, top - 6f * density, bottom)
-			}
-		}
-
-		// Aim point (head offset, below the bar) the assist is steering toward — drawn last so it's on top.
+		// A SINGLE marker: the aim point (head, below the bar) the assist is steering toward. The box +
+		// crosshair were removed — one indicator is enough and avoids two markers on the health bar.
 		if(aimActive)
 		{
 			val ax = aimX * w
@@ -176,11 +133,7 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 
 	companion object
 	{
-		// Cyan – stands out against the green target color.
-		private const val MARKER_COLOR = 0xFF00E5FF.toInt()
-		// Orange – the largest green region that didn't qualify as a bar.
-		private const val CANDIDATE_COLOR = 0xFFFFA000.toInt()
-		// Magenta – the aim point (head) the assist steers toward.
+		// Magenta – the single aim-point (head) marker the assist steers toward.
 		private const val AIM_COLOR = 0xFFFF2D95.toInt()
 	}
 }
