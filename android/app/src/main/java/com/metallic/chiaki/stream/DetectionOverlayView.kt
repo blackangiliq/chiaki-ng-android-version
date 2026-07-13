@@ -32,6 +32,13 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 		color = MARKER_COLOR
 	}
 
+	// Largest green region that did NOT qualify as a bar (shown so the user sees what's detected).
+	private val candidatePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		strokeWidth = 1.5f * density
+		color = CANDIDATE_COLOR
+	}
+
 	private val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		style = Paint.Style.STROKE
 		strokeWidth = 1.5f * density
@@ -57,48 +64,65 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 	override fun onDraw(canvas: Canvas)
 	{
 		super.onDraw(canvas)
-		val r = result ?: return
+		val r = result ?: return   // null only while the detector is stopped
 		val w = width.toFloat()
 		val h = height.toFloat()
 
-		val left = r.leftN * w
-		val top = r.topN * h
-		val right = r.rightN * w
-		val bottom = r.bottomN * h
-		val cx = (left + right) * 0.5f
-		val cy = (top + bottom) * 0.5f
+		// Draw the detected region: bright cyan if it qualifies as a bar, dim orange otherwise.
+		if(r.hasBox)
+		{
+			val left = r.leftN * w
+			val top = r.topN * h
+			val right = r.rightN * w
+			val bottom = r.bottomN * h
 
-		canvas.drawRect(left, top, right, bottom, boxPaint)
+			canvas.drawRect(left, top, right, bottom, if(r.isBar) boxPaint else candidatePaint)
 
-		val crossLen = 8f * density
-		canvas.drawLine(cx - crossLen, cy, cx + crossLen, cy, crossPaint)
-		canvas.drawLine(cx, cy - crossLen, cx, cy + crossLen, crossPaint)
+			if(r.isBar)
+			{
+				val cx = (left + right) * 0.5f
+				val cy = (top + bottom) * 0.5f
+				val crossLen = 8f * density
+				canvas.drawLine(cx - crossLen, cy, cx + crossLen, cy, crossPaint)
+				canvas.drawLine(cx, cy - crossLen, cx, cy + crossLen, crossPaint)
 
-		// Coordinates in source-video pixels (falls back to the on-screen center if unknown).
-		val vx = if(videoWidth > 0) (r.centerXN * videoWidth).toInt() else cx.toInt()
-		val vy = if(videoHeight > 0) (r.centerYN * videoHeight).toInt() else cy.toInt()
-		val vw = if(videoWidth > 0) (r.widthN * videoWidth).toInt() else (right - left).toInt()
-		val label = "x=$vx  y=$vy  w=$vw"
+				val vx = if(videoWidth > 0) (r.centerXN * videoWidth).toInt() else cx.toInt()
+				val vy = if(videoHeight > 0) (r.centerYN * videoHeight).toInt() else cy.toInt()
+				val vw = if(videoWidth > 0) (r.widthN * videoWidth).toInt() else (right - left).toInt()
+				drawTextWithBg(canvas, "x=$vx  y=$vy  w=$vw", left, top - 6f * density, bottom)
+			}
+		}
 
+		// Always-on debug HUD so it's obvious the detector is running and what it sees.
+		val status = if(r.isBar) "BAR FOUND"
+			else if(r.hasBox) "no bar (${r.reason})"
+			else "no green"
+		drawTextWithBg(canvas, "DETECT ON   green: ${r.targetPixels}px   $status",
+			6f * density, 6f * density + (textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent), h)
+	}
+
+	/** Draws text with a translucent background at (x, yBaseline-ish), kept on screen; falls back below altY. */
+	private fun drawTextWithBg(canvas: Canvas, text: String, x: Float, y: Float, altY: Float)
+	{
 		val pad = 4f * density
-		val textW = textPaint.measureText(label)
+		val textW = textPaint.measureText(text)
 		val fm = textPaint.fontMetrics
 		val textH = fm.descent - fm.ascent
-		var tx = left
-		var ty = top - pad * 2
-		if(ty - textH < 0f)          // if the box is at the very top, put the label just below it
-			ty = bottom + textH + pad * 2
-		if(tx + textW + pad * 2 > w) // keep the label on screen horizontally
-			tx = w - textW - pad * 2
+		var tx = x
+		var ty = y
+		if(ty - textH < 0f)
+			ty = altY + textH + pad * 2
+		if(tx + textW + pad * 2 > width) tx = width - textW - pad * 2
 		if(tx < 0f) tx = 0f
-
 		canvas.drawRect(tx, ty - textH, tx + textW + pad * 2, ty + pad, textBgPaint)
-		canvas.drawText(label, tx + pad, ty - fm.descent, textPaint)
+		canvas.drawText(text, tx + pad, ty - fm.descent, textPaint)
 	}
 
 	companion object
 	{
 		// Cyan – stands out against the green target color.
 		private const val MARKER_COLOR = 0xFF00E5FF.toInt()
+		// Orange – the largest green region that didn't qualify as a bar.
+		private const val CANDIDATE_COLOR = 0xFFFFA000.toInt()
 	}
 }

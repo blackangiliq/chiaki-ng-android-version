@@ -102,16 +102,6 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		viewModel.session.state.observe(this, Observer { this.stateChanged(it) })
 		adjustStreamViewAspect()
 
-		if(Preferences(this).colorDetectionEnabled)
-		{
-			val videoProfile = viewModel.session.connectInfo.videoProfile
-			binding.detectionOverlay.videoWidth = videoProfile.width
-			binding.detectionOverlay.videoHeight = videoProfile.height
-			healthBarDetector = HealthBarDetector(binding.surfaceView) { result ->
-				binding.detectionOverlay.update(result)
-			}
-		}
-
 		if(Preferences(this).rumbleEnabled)
 		{
 			val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
@@ -149,6 +139,18 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		super.onResume()
 		hideSystemUI()
 		viewModel.session.resume()
+
+		// Create lazily so toggling the setting and returning to the stream takes effect without a
+		// full reinstall. Reads the preference fresh each resume.
+		if(healthBarDetector == null && Preferences(this).colorDetectionEnabled)
+		{
+			val videoProfile = viewModel.session.connectInfo.videoProfile
+			binding.detectionOverlay.videoWidth = videoProfile.width
+			binding.detectionOverlay.videoHeight = videoProfile.height
+			healthBarDetector = HealthBarDetector(binding.surfaceView) { result ->
+				binding.detectionOverlay.update(result)
+			}
+		}
 		healthBarDetector?.start()
 	}
 

@@ -14,11 +14,14 @@ import android.view.SurfaceView
  * (0,0) is the top-left of the video, (1,1) the bottom-right.
  */
 data class DetectionResult(
+	val targetPixels: Int,   // total target-colored pixels found in the analyzed frame
+	val hasBox: Boolean,     // is there any target region to draw at all?
+	val isBar: Boolean,      // does the drawn region qualify as a health bar?
+	val reason: String,      // short explanation of why the largest region is / isn't a bar
 	val leftN: Float,
 	val topN: Float,
 	val rightN: Float,
-	val bottomN: Float,
-	val pixelCount: Int
+	val bottomN: Float
 )
 {
 	val centerXN get() = (leftN + rightN) * 0.5f
@@ -191,28 +194,33 @@ class HealthBarDetector(
 	 * 4-connected flood fill labels every target-colored blob, then the bar shape filter + corner
 	 * confirmation reject anything that is not a solid thin horizontal bar. The widest survivor wins.
 	 */
-	private fun analyze(bmp: Bitmap): DetectionResult?
+	private fun analyze(bmp: Bitmap): DetectionResult
 	{
 		val w = bmp.width
 		val h = bmp.height
-		val px = pixels ?: return null
-		val mk = mask ?: return null
-		val st = stack ?: return null
+		val px = pixels ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
+		val mk = mask ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
+		val st = stack ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
 		bmp.getPixels(px, 0, w, 0, 0, w, h)
 
-		// Build the color mask.
+		// Build the color mask and count how much of the target color is present at all.
+		var targetPixels = 0
 		for(i in 0 until w * h)
 		{
 			val c = px[i]
-			mk[i] = isTarget((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)
+			val t = isTarget((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)
+			mk[i] = t
+			if(t) targetPixels++
 		}
 
 		val minWidthPx = Config.MIN_WIDTH_FRAC * w
 		val minHeightPx = Config.MIN_HEIGHT_FRAC * h
 		val maxHeightPx = Config.MAX_HEIGHT_FRAC * h
 
-		var bestCount = -1
-		var bLeft = 0; var bTop = 0; var bRight = 0; var bBottom = 0
+		// Track both the biggest target blob overall (for the debug HUD) and the biggest blob that
+		// actually passes the health-bar shape filter (the real detection).
+		var loCount = -1; var loL = 0; var loT = 0; var loR = 0; var loB = 0
+		var barCount = -1; var bL = 0; var bT = 0; var bR = 0; var bB = 0
 
 		for(start in 0 until w * h)
 		{
@@ -243,44 +251,70 @@ class HealthBarDetector(
 				if(y < h - 1 && mk[idx + w]) { mk[idx + w] = false; st[top++] = idx + w }
 			}
 
+			if(count > loCount)
+			{
+				loCount = count
+				loL = minX; loT = minY; loR = maxX; loB = maxY
+			}
+
 			val bw = maxX - minX + 1
 			val bh = maxY - minY + 1
-
-			// Shape filter: thin horizontal bar of the expected size, mostly filled.
-			if(bw < minWidthPx) continue
-			if(bh < minHeightPx || bh > maxHeightPx) continue
-			if(bw.toFloat() / bh < Config.MIN_ASPECT) continue
-			if(count.toFloat() / (bw * bh) < Config.MIN_FILL_RATIO) continue
-
-			// Corner confirmation: at least MIN_CORNERS of the 4 (slightly inset) corners must be a
-			// dominant target pixel.
-			val insetX = minOf(2, (bw - 1) / 4)
-			val insetY = minOf(1, (bh - 1) / 2)
-			var corners = 0
-			if(isDominantAt(px, w, minX + insetX, minY + insetY)) corners++
-			if(isDominantAt(px, w, maxX - insetX, minY + insetY)) corners++
-			if(isDominantAt(px, w, minX + insetX, maxY - insetY)) corners++
-			if(isDominantAt(px, w, maxX - insetX, maxY - insetY)) corners++
-			if(corners < Config.MIN_CORNERS) continue
-
-			// Keep the widest bar (health bars are usually the largest solid colored bar on screen).
-			if(count > bestCount)
+			val isBar = bw >= minWidthPx && bh >= minHeightPx && bh <= maxHeightPx &&
+					bw.toFloat() / bh >= Config.MIN_ASPECT &&
+					count.toFloat() / (bw * bh) >= Config.MIN_FILL_RATIO &&
+					cornersOk(px, w, minX, minY, maxX, maxY)
+			if(isBar && count > barCount)
 			{
-				bestCount = count
-				bLeft = minX; bTop = minY; bRight = maxX; bBottom = maxY
+				barCount = count
+				bL = minX; bT = minY; bR = maxX; bB = maxY
 			}
 		}
 
-		if(bestCount < 0)
-			return null
+		// A qualifying bar wins; otherwise report the largest blob + why it was rejected.
+		if(barCount >= 0)
+			return DetectionResult(targetPixels, true, true, "OK",
+				bL.toFloat() / w, bT.toFloat() / h, (bR + 1).toFloat() / w, (bB + 1).toFloat() / h)
 
-		return DetectionResult(
-			leftN = bLeft.toFloat() / w,
-			topN = bTop.toFloat() / h,
-			rightN = (bRight + 1).toFloat() / w,
-			bottomN = (bBottom + 1).toFloat() / h,
-			pixelCount = bestCount
-		)
+		if(loCount >= 0)
+		{
+			val reason = rejectReason(px, w, loL, loT, loR, loB, loCount, minWidthPx, minHeightPx, maxHeightPx)
+			return DetectionResult(targetPixels, true, false, reason,
+				loL.toFloat() / w, loT.toFloat() / h, (loR + 1).toFloat() / w, (loB + 1).toFloat() / h)
+		}
+
+		return DetectionResult(targetPixels, false, false, "no target color", 0f, 0f, 0f, 0f)
+	}
+
+	private fun cornersOk(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Boolean
+	{
+		val bw = maxX - minX + 1
+		val bh = maxY - minY + 1
+		val insetX = minOf(2, (bw - 1) / 4)
+		val insetY = minOf(1, (bh - 1) / 2)
+		var corners = 0
+		if(isDominantAt(px, w, minX + insetX, minY + insetY)) corners++
+		if(isDominantAt(px, w, maxX - insetX, minY + insetY)) corners++
+		if(isDominantAt(px, w, minX + insetX, maxY - insetY)) corners++
+		if(isDominantAt(px, w, maxX - insetX, maxY - insetY)) corners++
+		return corners >= Config.MIN_CORNERS
+	}
+
+	/** Human-readable reason the largest blob failed the bar filter (for the debug HUD). */
+	private fun rejectReason(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int,
+							 count: Int, minWidthPx: Float, minHeightPx: Float, maxHeightPx: Float): String
+	{
+		val bw = maxX - minX + 1
+		val bh = maxY - minY + 1
+		return when
+		{
+			bw < minWidthPx -> "too narrow"
+			bh < minHeightPx -> "too thin"
+			bh > maxHeightPx -> "too tall"
+			bw.toFloat() / bh < Config.MIN_ASPECT -> "not horizontal"
+			count.toFloat() / (bw * bh) < Config.MIN_FILL_RATIO -> "not solid"
+			!cornersOk(px, w, minX, minY, maxX, maxY) -> "edges not pure green"
+			else -> "OK"
+		}
 	}
 
 	private fun isDominantAt(px: IntArray, w: Int, x: Int, y: Int): Boolean
