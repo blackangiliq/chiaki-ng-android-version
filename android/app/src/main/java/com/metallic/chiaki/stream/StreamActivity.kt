@@ -21,6 +21,7 @@ import com.metallic.chiaki.common.ext.viewModelFactory
 import com.metallic.chiaki.databinding.ActivityStreamBinding
 import com.metallic.chiaki.lib.ConnectInfo
 import com.metallic.chiaki.lib.ConnectVideoProfile
+import com.metallic.chiaki.lib.ControllerState
 import com.metallic.chiaki.session.*
 import com.metallic.chiaki.touchcontrols.DefaultTouchControlsFragment
 import com.metallic.chiaki.touchcontrols.TouchControlsFragment
@@ -47,6 +48,15 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 
 	private var healthBarDetector: HealthBarDetector? = null
 	private var controllerOverlayEnabled = false
+
+	// Aim assist: the detector feeds target positions into [aimAssist]; a 60 Hz loop on [aimThread]
+	// samples it and pushes a smoothed right-stick into the controller stream. Last pushed value is
+	// cached so we only send when it actually changes (silent while no target is tracked).
+	private var aimAssist: AimAssist? = null
+	private var aimThread: HandlerThread? = null
+	private var aimHandler: Handler? = null
+	private var lastAimX: Short = 0
+	private var lastAimY: Short = 0
 
 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
 
@@ -154,11 +164,55 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 			binding.detectionOverlay.videoHeight = videoProfile.height
 			binding.detectionOverlay.fovWidthPercent = prefs.fovWidthPercent
 			binding.detectionOverlay.fovHeightPercent = prefs.fovHeightPercent
+			val aim = AimAssist().also { aimAssist = it }
 			healthBarDetector = HealthBarDetector(binding.surfaceView, prefs.fovWidthPercent, prefs.fovHeightPercent) { result ->
 				binding.detectionOverlay.update(result)
+				aim.onDetection(result, SystemClock.uptimeMillis())
 			}
 		}
 		healthBarDetector?.start()
+		startAimLoop()
+	}
+
+	/** 60 Hz loop: sample [aimAssist] and push the smoothed stick, only when it changed. */
+	private fun startAimLoop()
+	{
+		if(aimAssist == null || aimThread != null)
+			return
+		val thread = HandlerThread("aim-loop").also { it.start() }
+		aimThread = thread
+		val handler = Handler(thread.looper)
+		aimHandler = handler
+		handler.post(object: Runnable
+		{
+			override fun run()
+			{
+				aimAssist?.let { aim ->
+					val (sx, sy) = aim.tick(SystemClock.uptimeMillis())
+					if(sx != lastAimX || sy != lastAimY)
+					{
+						lastAimX = sx; lastAimY = sy
+						viewModel.input.aimControllerState = ControllerState(rightX = sx, rightY = sy)
+					}
+				}
+				aimHandler?.postDelayed(this, 16L)
+			}
+		})
+	}
+
+	private fun stopAimLoop()
+	{
+		aimHandler?.removeCallbacksAndMessages(null)
+		aimThread?.quitSafely()
+		aimThread = null
+		aimHandler = null
+		aimAssist?.reset()
+		// Release the synthetic stick so a leftover deflection doesn't linger after we stop.
+		if(lastAimX.toInt() != 0 || lastAimY.toInt() != 0)
+		{
+			lastAimX = 0; lastAimY = 0
+			viewModel.input.aimControllerState = ControllerState()
+		}
 	}
 
 	override fun onPause()
@@ -166,12 +220,14 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		super.onPause()
 		viewModel.session.pause()
 		healthBarDetector?.stop()
+		stopAimLoop()
 	}
 
 	override fun onDestroy()
 	{
 		super.onDestroy()
 		healthBarDetector?.stop()
+		stopAimLoop()
 		controlsDisposable.dispose()
 	}
 

@@ -51,11 +51,11 @@ class HealthBarDetector(
 {
 	object Config
 	{
-		/** How often to grab and analyze a frame (ms). ~6-7 Hz is plenty and cheap. */
-		const val INTERVAL_MS = 150L
+		/** How often to grab and analyze a frame (ms). ~15 Hz — the 60 Hz aim loop smooths between these. */
+		const val INTERVAL_MS = 66L
 
 		/** Longest side of the analysis bitmap. The frame is downscaled to this to keep the loop cheap. */
-		const val ANALYSIS_MAX_DIMEN = 640
+		const val ANALYSIS_MAX_DIMEN = 400
 
 		// --- Target color, HSV. Green #00FF00. Values are the OpenCV range (H 0-179, S/V 0-255)
 		// lower=(45,175,155) upper=(75,255,255) converted to Android's scale (H 0-360, S/V 0-1). ---
@@ -89,7 +89,6 @@ class HealthBarDetector(
 	private var mask: BooleanArray? = null
 	private var maskTmp: BooleanArray? = null   // scratch for the morphological close
 	private var stack: IntArray? = null
-	private val hsv = FloatArray(3)
 
 	fun start()
 	{
@@ -184,13 +183,18 @@ class HealthBarDetector(
 		return bmp
 	}
 
-	/** True if the pixel falls inside the target HSV range. */
+	/**
+	 * True if the pixel is target-green. Fast **integer** equivalent of the old HSV test (no per-pixel
+	 * `Color.RGBToHSV` float conversion — the single biggest cost in the analysis loop):
+	 *   green is the dominant channel (hue ≈ green), V = max/255 ≥ 0.608, S = (max-min)/max ≥ 0.686.
+	 * Since g is the max when it passes, max=g and min=min(r,b) — the whole test is a few int compares.
+	 */
 	private fun isTarget(r: Int, g: Int, b: Int): Boolean
 	{
-		Color.RGBToHSV(r, g, b, hsv)
-		return hsv[0] in Config.HUE_MIN..Config.HUE_MAX &&
-				hsv[1] >= Config.SAT_MIN &&
-				hsv[2] >= Config.VAL_MIN
+		if(g < 155) return false            // V ≥ 0.608 (brightness / green floor)
+		if(g < r || g < b) return false     // green is the max channel (green-ish hue)
+		val mn = if(r < b) r else b
+		return (g - mn) * 1000 >= 686 * g   // S ≥ 0.686 (saturation), integer form
 	}
 
 	/** Stronger single-pixel confirmation (BGR dominance) used to validate a candidate's corners. */

@@ -40,13 +40,21 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(motionControllerState.r2State > 0U)
 			controllerState.r2State = motionControllerState.r2State
 
-		return controllerState or touchControllerState
+		return controllerState or touchControllerState or aimControllerState
 	}
 
 	private val sensorControllerState = ControllerState() // from Motion Sensors
 	private val keyControllerState = ControllerState() // from KeyEvents
 	private val motionControllerState = ControllerState() // from MotionEvents
 	var touchControllerState = ControllerState()
+		set(value)
+		{
+			field = value
+			controllerStateUpdated()
+		}
+	// Synthetic right-stick from the aim assist (see AimAssist). ORed in via maxAbs, so a harder
+	// physical right-stick flick still wins; when no target is tracked this is a zero state (no effect).
+	var aimControllerState = ControllerState()
 		set(value)
 		{
 			field = value
