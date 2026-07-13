@@ -83,6 +83,11 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(motionEnabledKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(motionEnabledKey, value).apply() }
 
+	val colorDetectionEnabledKey get() = resources.getString(R.string.preferences_color_detection_enabled_key)
+	var colorDetectionEnabled
+		get() = sharedPreferences.getBoolean(colorDetectionEnabledKey, false)
+		set(value) { sharedPreferences.edit().putBoolean(colorDetectionEnabledKey, value).apply() }
+
 	val buttonHapticEnabledKey get() = resources.getString(R.string.preferences_button_haptic_enabled_key)
 	var buttonHapticEnabled
 		get() = sharedPreferences.getBoolean(buttonHapticEnabledKey, true)

@@ -45,6 +45,8 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 	private lateinit var viewModel: StreamViewModel
 	private lateinit var binding: ActivityStreamBinding
 
+	private var healthBarDetector: HealthBarDetector? = null
+
 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
 
 	override fun onCreate(savedInstanceState: Bundle?)
@@ -100,6 +102,16 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		viewModel.session.state.observe(this, Observer { this.stateChanged(it) })
 		adjustStreamViewAspect()
 
+		if(Preferences(this).colorDetectionEnabled)
+		{
+			val videoProfile = viewModel.session.connectInfo.videoProfile
+			binding.detectionOverlay.videoWidth = videoProfile.width
+			binding.detectionOverlay.videoHeight = videoProfile.height
+			healthBarDetector = HealthBarDetector(binding.surfaceView) { result ->
+				binding.detectionOverlay.update(result)
+			}
+		}
+
 		if(Preferences(this).rumbleEnabled)
 		{
 			val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
@@ -137,17 +149,20 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		super.onResume()
 		hideSystemUI()
 		viewModel.session.resume()
+		healthBarDetector?.start()
 	}
 
 	override fun onPause()
 	{
 		super.onPause()
 		viewModel.session.pause()
+		healthBarDetector?.stop()
 	}
 
 	override fun onDestroy()
 	{
 		super.onDestroy()
+		healthBarDetector?.stop()
 		controlsDisposable.dispose()
 	}
 

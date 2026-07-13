@@ -38,6 +38,11 @@
             app:icon="@drawable/ic_button_haptic" />
 
         <SwitchPreference
+            app:key="@string/preferences_color_detection_enabled_key"
+            app:title="@string/preferences_color_detection_enabled_title"
+            app:summary="@string/preferences_color_detection_enabled_summary" />
+
+        <SwitchPreference
             app:key="@string/preferences_log_verbose_key"
             app:title="@string/preferences_log_verbose_title"
             app:summary="@string/preferences_log_verbose_summary"
