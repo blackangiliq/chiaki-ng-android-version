@@ -139,8 +139,13 @@ beach:
 	chiaki_mutex_unlock(&decoder->codec_mutex);
 }
 
-bool android_chiaki_video_decoder_video_sample(uint8_t *buf, size_t buf_size, void *user)
+// Signature must match ChiakiVideoSampleCallback (chiaki/session.h). The frames_lost /
+// frame_recovered args were added to the core callback; the Android decoder doesn't need them, but
+// they must be present or `user` is read from the wrong argument register (was NULL -> crash at 0x8).
+bool android_chiaki_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user)
 {
+	(void)frames_lost;
+	(void)frame_recovered;
 	bool r = true;
 	AndroidChiakiVideoDecoder *decoder = user;
 	chiaki_mutex_lock(&decoder->codec_mutex);
