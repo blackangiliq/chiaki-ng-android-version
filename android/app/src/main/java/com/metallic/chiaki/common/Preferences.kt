@@ -103,6 +103,18 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(controllerOverlayEnabledKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(controllerOverlayEnabledKey, value).apply() }
 
+	// Aim assist: right-stick pull strength (speed), 10..100 %.
+	val aimStrengthPercentKey get() = resources.getString(R.string.preferences_aim_strength_percent_key)
+	var aimStrengthPercent
+		get() = sharedPreferences.getInt(aimStrengthPercentKey, 75)
+		set(value) { sharedPreferences.edit().putInt(aimStrengthPercentKey, value).apply() }
+
+	// Aim assist: how far below the health bar the head sits, as % of the bar width, 0..200 %.
+	val aimHeadOffsetPercentKey get() = resources.getString(R.string.preferences_aim_head_offset_percent_key)
+	var aimHeadOffsetPercent
+		get() = sharedPreferences.getInt(aimHeadOffsetPercentKey, 60)
+		set(value) { sharedPreferences.edit().putInt(aimHeadOffsetPercentKey, value).apply() }
+
 	val buttonHapticEnabledKey get() = resources.getString(R.string.preferences_button_haptic_enabled_key)
 	var buttonHapticEnabled
 		get() = sharedPreferences.getBoolean(buttonHapticEnabledKey, true)

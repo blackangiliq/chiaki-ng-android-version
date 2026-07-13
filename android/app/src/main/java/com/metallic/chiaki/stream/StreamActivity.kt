@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter
 import android.app.AlertDialog
 import android.graphics.Matrix
 import android.os.*
+import android.util.Log
 import android.view.*
 import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
@@ -57,6 +58,7 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 	private var aimHandler: Handler? = null
 	private var lastAimX: Short = 0
 	private var lastAimY: Short = 0
+	private var aimLogCtr = 0
 
 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
 
@@ -168,7 +170,13 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 			healthBarDetector = HealthBarDetector(binding.surfaceView, prefs.fovWidthPercent, prefs.fovHeightPercent) { result ->
 				binding.detectionOverlay.update(result)
 				aim.onDetection(result, SystemClock.uptimeMillis())
+				binding.detectionOverlay.setAimPoint(aim.aimPointX, aim.aimPointY, aim.aimActive)
 			}
+		}
+		// Apply the aim tuning fresh each resume so changing it in Settings takes effect on return.
+		aimAssist?.let {
+			it.strength = prefs.aimStrengthPercent / 100f
+			it.headOffset = prefs.aimHeadOffsetPercent / 100f
 		}
 		healthBarDetector?.start()
 		startAimLoop()
@@ -194,6 +202,8 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 						lastAimX = sx; lastAimY = sy
 						viewModel.input.aimControllerState = ControllerState(rightX = sx, rightY = sy)
 					}
+					if(++aimLogCtr % 30 == 0)
+						Log.d("AimLoop", "active=${aim.aimActive} stick=($sx,$sy)")
 				}
 				aimHandler?.postDelayed(this, 16L)
 			}

@@ -61,6 +61,24 @@
             app:showSeekBarValue="true"
             app:seekBarIncrement="5" />
 
+        <SeekBarPreference
+            app:key="@string/preferences_aim_strength_percent_key"
+            app:title="@string/preferences_aim_strength_percent_title"
+            android:defaultValue="75"
+            app:min="10"
+            android:max="100"
+            app:showSeekBarValue="true"
+            app:seekBarIncrement="5" />
+
+        <SeekBarPreference
+            app:key="@string/preferences_aim_head_offset_percent_key"
+            app:title="@string/preferences_aim_head_offset_percent_title"
+            android:defaultValue="60"
+            app:min="0"
+            android:max="200"
+            app:showSeekBarValue="true"
+            app:seekBarIncrement="10" />
+
         <SwitchPreference
             app:key="@string/preferences_controller_overlay_enabled_key"
             app:title="@string/preferences_controller_overlay_enabled_title"

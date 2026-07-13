@@ -51,6 +51,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 	{
 		preferences.fovWidthPercentKey -> preferences.fovWidthPercent
 		preferences.fovHeightPercentKey -> preferences.fovHeightPercent
+		preferences.aimStrengthPercentKey -> preferences.aimStrengthPercent
+		preferences.aimHeadOffsetPercentKey -> preferences.aimHeadOffsetPercent
 		else -> defValue
 	}
 
@@ -60,6 +62,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		{
 			preferences.fovWidthPercentKey -> preferences.fovWidthPercent = value
 			preferences.fovHeightPercentKey -> preferences.fovHeightPercent = value
+			preferences.aimStrengthPercentKey -> preferences.aimStrengthPercent = value
+			preferences.aimHeadOffsetPercentKey -> preferences.aimHeadOffsetPercent = value
 		}
 	}
 

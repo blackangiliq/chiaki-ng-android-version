@@ -29,6 +29,11 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 
 	@Volatile private var result: DetectionResult? = null
 
+	// The aim point (head, below the bar) the aim assist is tracking, in normalized frame coords.
+	@Volatile private var aimX = 0.5f
+	@Volatile private var aimY = 0.5f
+	@Volatile private var aimActive = false
+
 	private val density = resources.displayMetrics.density
 
 	private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -67,9 +72,27 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 		pathEffect = DashPathEffect(floatArrayOf(8f * density, 6f * density), 0f)
 	}
 
+	// Aim point marker — filled dot + ring, magenta so it stands out from the green target and cyan box.
+	private val aimFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.FILL
+		color = AIM_COLOR
+	}
+	private val aimRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		strokeWidth = 2f * density
+		color = AIM_COLOR
+	}
+
 	fun update(result: DetectionResult?)
 	{
 		this.result = result
+		postInvalidateOnAnimation()
+	}
+
+	/** Publish the aim point the assist is tracking (normalized), so it can be drawn on the head. */
+	fun setAimPoint(x: Float, y: Float, active: Boolean)
+	{
+		aimX = x; aimY = y; aimActive = active
 		postInvalidateOnAnimation()
 	}
 
@@ -115,6 +138,15 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 			}
 		}
 
+		// Aim point (head offset, below the bar) the assist is steering toward — drawn last so it's on top.
+		if(aimActive)
+		{
+			val ax = aimX * w
+			val ay = aimY * h
+			canvas.drawCircle(ax, ay, 4f * density, aimFillPaint)
+			canvas.drawCircle(ax, ay, 10f * density, aimRingPaint)
+		}
+
 		// Always-on debug HUD so it's obvious the detector is running and what it sees.
 		val status = if(r.isBar) "BAR FOUND"
 			else if(r.hasBox) "no bar (${r.reason})"
@@ -146,5 +178,7 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 		private const val MARKER_COLOR = 0xFF00E5FF.toInt()
 		// Orange – the largest green region that didn't qualify as a bar.
 		private const val CANDIDATE_COLOR = 0xFFFFA000.toInt()
+		// Magenta – the aim point (head) the assist steers toward.
+		private const val AIM_COLOR = 0xFFFF2D95.toInt()
 	}
 }

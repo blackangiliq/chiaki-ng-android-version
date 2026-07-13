@@ -2,6 +2,7 @@
 
 package com.metallic.chiaki.stream
 
+import android.util.Log
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -53,6 +54,12 @@ class AimAssist
 	@Volatile private var tgtX = 0f
 	@Volatile private var tgtY = 0f
 
+	// The current aim point (head, below the bar) in normalized frame coords — published so the overlay
+	// can draw a marker on it (like the desktop app's aim dot). aimActive = a target is being tracked.
+	@Volatile var aimPointX = 0.5f
+	@Volatile var aimPointY = 0.5f
+	@Volatile var aimActive = false
+
 	/** Feed a fresh detection (or null when nothing is found). Called at the detection rate. */
 	fun onDetection(r: DetectionResult?, nowMs: Long)
 	{
@@ -60,6 +67,9 @@ class AimAssist
 		{
 			haveTarget = false
 			hasPos = false
+			aimActive = false
+			if(enabled && r != null)
+				Log.d(TAG, "no-aim: hasBox=${r.hasBox} isBar=${r.isBar} reason=${r.reason} green=${r.targetPixels}")
 			return
 		}
 
@@ -82,8 +92,12 @@ class AimAssist
 
 		tgtX = posX
 		tgtY = posY
+		aimPointX = posX
+		aimPointY = posY
+		aimActive = true
 		lastDetectMs = nowMs
 		haveTarget = true
+		Log.d(TAG, "det isBar=true aim=(%.3f,%.3f) barW=%.3f".format(posX, posY, r.widthN))
 	}
 
 	/** Advance the smoothing one aim-loop step and return the right-stick output (±32767). */
@@ -149,5 +163,11 @@ class AimAssist
 		posX = 0f; posY = 0f; hasPos = false
 		smoothX = 0f; smoothY = 0f
 		haveTarget = false
+		aimActive = false
+	}
+
+	companion object
+	{
+		private const val TAG = "AimAssist"
 	}
 }
