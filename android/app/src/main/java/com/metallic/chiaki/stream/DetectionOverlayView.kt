@@ -5,6 +5,7 @@ package com.metallic.chiaki.stream
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
@@ -21,6 +22,10 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 	/** Video frame size, used to report coordinates in source pixels. */
 	var videoWidth = 0
 	var videoHeight = 0
+
+	/** Centered detection FOV as a percentage of the frame; drawn so the user sees the search region. */
+	var fovWidthPercent = 100
+	var fovHeightPercent = 100
 
 	@Volatile private var result: DetectionResult? = null
 
@@ -55,6 +60,13 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 		color = 0xAA000000.toInt()
 	}
 
+	private val fovPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		strokeWidth = 1f * density
+		color = 0x66FFFFFF
+		pathEffect = DashPathEffect(floatArrayOf(8f * density, 6f * density), 0f)
+	}
+
 	fun update(result: DetectionResult?)
 	{
 		this.result = result
@@ -67,6 +79,16 @@ class DetectionOverlayView @JvmOverloads constructor(context: Context, attrs: At
 		val r = result ?: return   // null only while the detector is stopped
 		val w = width.toFloat()
 		val h = height.toFloat()
+
+		// Draw the detection FOV so the user sees where it's actually looking.
+		if(fovWidthPercent < 100 || fovHeightPercent < 100)
+		{
+			val fw = fovWidthPercent / 100f * w
+			val fh = fovHeightPercent / 100f * h
+			val fl = (w - fw) / 2f
+			val ft = (h - fh) / 2f
+			canvas.drawRect(fl, ft, fl + fw, ft + fh, fovPaint)
+		}
 
 		// Draw the detected region: bright cyan if it qualifies as a bar, dim orange otherwise.
 		if(r.hasBox)

@@ -96,6 +96,10 @@
     <string name="preferences_button_haptic_enabled_summary">Use phone vibration motor for short haptic feedback on button touches</string>
     <string name="preferences_color_detection_enabled_title">Health Bar Detection</string>
     <string name="preferences_color_detection_enabled_summary">Detect a green health bar in the stream and mark its position on screen</string>
+    <string name="preferences_fov_width_percent_title">Detection FOV width (%)</string>
+    <string name="preferences_fov_height_percent_title">Detection FOV height (%)</string>
+    <string name="preferences_controller_overlay_enabled_title">Controller Button Overlay</string>
+    <string name="preferences_controller_overlay_enabled_summary">Show which gamepad button is pressed while streaming</string>
     <string name="alert_message_delete_registered_host">Are you sure you want to delete the registered console %s with ID %s?</string>
     <string name="alert_message_delete_manual_host">Are you sure you want to delete the console entry for %s?</string>
     <string name="action_keep">Keep</string>
@@ -116,6 +120,9 @@
     <string name="preferences_motion_enabled_key">motion_enabled</string>
     <string name="preferences_button_haptic_enabled_key">button_haptic_enabled</string>
     <string name="preferences_color_detection_enabled_key">color_detection_enabled</string>
+    <string name="preferences_fov_width_percent_key">fov_width_percent</string>
+    <string name="preferences_fov_height_percent_key">fov_height_percent</string>
+    <string name="preferences_controller_overlay_enabled_key">controller_overlay_enabled</string>
     <string name="preferences_log_verbose_key">log_verbose</string>
     <string name="preferences_import_settings_key">import_settings</string>
     <string name="preferences_export_settings_key">export_settings</string>

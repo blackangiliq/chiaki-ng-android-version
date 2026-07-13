@@ -85,8 +85,23 @@ class Preferences(context: Context)
 
 	val colorDetectionEnabledKey get() = resources.getString(R.string.preferences_color_detection_enabled_key)
 	var colorDetectionEnabled
-		get() = sharedPreferences.getBoolean(colorDetectionEnabledKey, false)
+		get() = sharedPreferences.getBoolean(colorDetectionEnabledKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(colorDetectionEnabledKey, value).apply() }
+
+	val fovWidthPercentKey get() = resources.getString(R.string.preferences_fov_width_percent_key)
+	var fovWidthPercent
+		get() = sharedPreferences.getInt(fovWidthPercentKey, 60)
+		set(value) { sharedPreferences.edit().putInt(fovWidthPercentKey, value).apply() }
+
+	val fovHeightPercentKey get() = resources.getString(R.string.preferences_fov_height_percent_key)
+	var fovHeightPercent
+		get() = sharedPreferences.getInt(fovHeightPercentKey, 40)
+		set(value) { sharedPreferences.edit().putInt(fovHeightPercentKey, value).apply() }
+
+	val controllerOverlayEnabledKey get() = resources.getString(R.string.preferences_controller_overlay_enabled_key)
+	var controllerOverlayEnabled
+		get() = sharedPreferences.getBoolean(controllerOverlayEnabledKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(controllerOverlayEnabledKey, value).apply() }
 
 	val buttonHapticEnabledKey get() = resources.getString(R.string.preferences_button_haptic_enabled_key)
 	var buttonHapticEnabled

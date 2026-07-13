@@ -46,6 +46,7 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 	private lateinit var binding: ActivityStreamBinding
 
 	private var healthBarDetector: HealthBarDetector? = null
+	private var controllerOverlayEnabled = false
 
 	private val uiVisibilityHandler = Handler(Looper.getMainLooper())
 
@@ -141,13 +142,19 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 		viewModel.session.resume()
 
 		// Create lazily so toggling the setting and returning to the stream takes effect without a
-		// full reinstall. Reads the preference fresh each resume.
-		if(healthBarDetector == null && Preferences(this).colorDetectionEnabled)
+		// full reinstall. Reads the preferences fresh each resume.
+		val prefs = Preferences(this)
+		controllerOverlayEnabled = prefs.controllerOverlayEnabled
+		binding.controllerOverlay.visibility = if(controllerOverlayEnabled) View.VISIBLE else View.GONE
+
+		if(healthBarDetector == null && prefs.colorDetectionEnabled)
 		{
 			val videoProfile = viewModel.session.connectInfo.videoProfile
 			binding.detectionOverlay.videoWidth = videoProfile.width
 			binding.detectionOverlay.videoHeight = videoProfile.height
-			healthBarDetector = HealthBarDetector(binding.surfaceView) { result ->
+			binding.detectionOverlay.fovWidthPercent = prefs.fovWidthPercent
+			binding.detectionOverlay.fovHeightPercent = prefs.fovHeightPercent
+			healthBarDetector = HealthBarDetector(binding.surfaceView, prefs.fovWidthPercent, prefs.fovHeightPercent) { result ->
 				binding.detectionOverlay.update(result)
 			}
 		}
@@ -353,8 +360,21 @@ class StreamActivity : AppCompatActivity(), View.OnSystemUiVisibilityChangeListe
 
 	private fun adjustStreamViewAspect() = adjustSurfaceViewAspect()
 
-	override fun dispatchKeyEvent(event: KeyEvent) = viewModel.input.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
-	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
+	override fun dispatchKeyEvent(event: KeyEvent): Boolean
+	{
+		val handled = viewModel.input.dispatchKeyEvent(event)
+		if(controllerOverlayEnabled)
+			binding.controllerOverlay.update(viewModel.input.controllerState)
+		return handled || super.dispatchKeyEvent(event)
+	}
+
+	override fun onGenericMotionEvent(event: MotionEvent): Boolean
+	{
+		val handled = viewModel.input.onGenericMotionEvent(event)
+		if(controllerOverlayEnabled)
+			binding.controllerOverlay.update(viewModel.input.controllerState)
+		return handled || super.onGenericMotionEvent(event)
+	}
 }
 
 enum class TransformMode

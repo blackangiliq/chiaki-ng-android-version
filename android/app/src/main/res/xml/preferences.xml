@@ -40,7 +40,32 @@
         <SwitchPreference
             app:key="@string/preferences_color_detection_enabled_key"
             app:title="@string/preferences_color_detection_enabled_title"
-            app:summary="@string/preferences_color_detection_enabled_summary" />
+            app:summary="@string/preferences_color_detection_enabled_summary"
+            app:defaultValue="true" />
+
+        <SeekBarPreference
+            app:key="@string/preferences_fov_width_percent_key"
+            app:title="@string/preferences_fov_width_percent_title"
+            android:defaultValue="60"
+            app:min="10"
+            android:max="100"
+            app:showSeekBarValue="true"
+            app:seekBarIncrement="5" />
+
+        <SeekBarPreference
+            app:key="@string/preferences_fov_height_percent_key"
+            app:title="@string/preferences_fov_height_percent_title"
+            android:defaultValue="40"
+            app:min="10"
+            android:max="100"
+            app:showSeekBarValue="true"
+            app:seekBarIncrement="5" />
+
+        <SwitchPreference
+            app:key="@string/preferences_controller_overlay_enabled_key"
+            app:title="@string/preferences_controller_overlay_enabled_title"
+            app:summary="@string/preferences_controller_overlay_enabled_summary"
+            app:defaultValue="true" />
 
         <SwitchPreference
             app:key="@string/preferences_log_verbose_key"

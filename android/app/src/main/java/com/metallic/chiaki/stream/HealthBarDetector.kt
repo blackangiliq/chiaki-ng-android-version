@@ -44,6 +44,8 @@ data class DetectionResult(
  */
 class HealthBarDetector(
 	private val surfaceView: SurfaceView,
+	private val fovWidthPercent: Int,
+	private val fovHeightPercent: Int,
 	private val onResult: (DetectionResult?) -> Unit
 )
 {
@@ -55,12 +57,15 @@ class HealthBarDetector(
 		/** Longest side of the analysis bitmap. The frame is downscaled to this to keep the loop cheap. */
 		const val ANALYSIS_MAX_DIMEN = 640
 
-		// --- Target color, HSV (Android scale: H 0..360, S 0..1, V 0..1). Default: green (#00FF00). ---
-		// Equivalent to the OpenCV wide range lower=(38,50,90) upper=(82,255,255) on the H:0-179 scale.
-		const val HUE_MIN = 76f
-		const val HUE_MAX = 164f
-		const val SAT_MIN = 0.196f
-		const val VAL_MIN = 0.353f
+		// --- Target color, HSV. Green #00FF00. Values are the OpenCV range (H 0-179, S/V 0-255)
+		// lower=(45,175,155) upper=(75,255,255) converted to Android's scale (H 0-360, S/V 0-1). ---
+		const val HUE_MIN = 90f     // OpenCV 45 * 2
+		const val HUE_MAX = 150f    // OpenCV 75 * 2
+		const val SAT_MIN = 0.686f  // OpenCV 175 / 255
+		const val VAL_MIN = 0.608f  // OpenCV 155 / 255
+
+		// Morphological close radius (dilate then erode) to bridge gaps in the mask. 2 ≈ a 5x5 kernel.
+		const val CLOSE_RADIUS = 2
 
 		// --- Bar shape (as fractions of the frame so they are resolution independent). ---
 		const val MIN_WIDTH_FRAC = 0.05f    // bar must span at least 5% of the frame width
@@ -82,6 +87,7 @@ class HealthBarDetector(
 	private var bitmap: Bitmap? = null
 	private var pixels: IntArray? = null
 	private var mask: BooleanArray? = null
+	private var maskTmp: BooleanArray? = null   // scratch for the morphological close
 	private var stack: IntArray? = null
 	private val hsv = FloatArray(3)
 
@@ -111,6 +117,7 @@ class HealthBarDetector(
 		bitmap = null
 		pixels = null
 		mask = null
+		maskTmp = null
 		stack = null
 		onResult(null)
 	}
@@ -171,6 +178,7 @@ class HealthBarDetector(
 			bitmap = bmp
 			pixels = IntArray(w * h)
 			mask = BooleanArray(w * h)
+			maskTmp = BooleanArray(w * h)
 			stack = IntArray(w * h)
 		}
 		return bmp
@@ -201,17 +209,33 @@ class HealthBarDetector(
 		val px = pixels ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
 		val mk = mask ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
 		val st = stack ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
+		val tmp = maskTmp ?: return DetectionResult(0, false, false, "n/a", 0f, 0f, 0f, 0f)
 		bmp.getPixels(px, 0, w, 0, 0, w, h)
 
-		// Build the color mask and count how much of the target color is present at all.
+		// Region of interest: a centered FOV. Restricting all work to it speeds up the whole pass.
+		val roiW = (w * fovWidthPercent / 100).coerceIn(1, w)
+		val roiH = (h * fovHeightPercent / 100).coerceIn(1, h)
+		val x0 = (w - roiW) / 2
+		val y0 = (h - roiH) / 2
+		val x1 = x0 + roiW
+		val y1 = y0 + roiH
+
+		// Build the color mask inside the ROI and count how much target color is present at all.
 		var targetPixels = 0
-		for(i in 0 until w * h)
+		for(y in y0 until y1)
 		{
-			val c = px[i]
-			val t = isTarget((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)
-			mk[i] = t
-			if(t) targetPixels++
+			val row = y * w
+			for(x in x0 until x1)
+			{
+				val c = px[row + x]
+				val t = isTarget((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)
+				mk[row + x] = t
+				if(t) targetPixels++
+			}
 		}
+
+		// Morphological close (dilate then erode) bridges small gaps so a broken bar reads as one blob.
+		morphClose(mk, tmp, x0, y0, x1, y1, w)
 
 		val minWidthPx = Config.MIN_WIDTH_FRAC * w
 		val minHeightPx = Config.MIN_HEIGHT_FRAC * h
@@ -222,51 +246,56 @@ class HealthBarDetector(
 		var loCount = -1; var loL = 0; var loT = 0; var loR = 0; var loB = 0
 		var barCount = -1; var bL = 0; var bT = 0; var bR = 0; var bB = 0
 
-		for(start in 0 until w * h)
+		for(sy in y0 until y1)
 		{
-			if(!mk[start])
-				continue
-
-			// Flood fill this blob (4-connectivity), consuming the mask as we go.
-			var minX = Int.MAX_VALUE; var minY = Int.MAX_VALUE
-			var maxX = Int.MIN_VALUE; var maxY = Int.MIN_VALUE
-			var count = 0
-			var top = 0
-			st[top++] = start
-			mk[start] = false
-			while(top > 0)
+			val srow = sy * w
+			for(sx in x0 until x1)
 			{
-				val idx = st[--top]
-				val x = idx % w
-				val y = idx / w
-				if(x < minX) minX = x
-				if(x > maxX) maxX = x
-				if(y < minY) minY = y
-				if(y > maxY) maxY = y
-				count++
+				val start = srow + sx
+				if(!mk[start])
+					continue
 
-				if(x > 0 && mk[idx - 1]) { mk[idx - 1] = false; st[top++] = idx - 1 }
-				if(x < w - 1 && mk[idx + 1]) { mk[idx + 1] = false; st[top++] = idx + 1 }
-				if(y > 0 && mk[idx - w]) { mk[idx - w] = false; st[top++] = idx - w }
-				if(y < h - 1 && mk[idx + w]) { mk[idx + w] = false; st[top++] = idx + w }
-			}
+				// Flood fill this blob (4-connectivity, clamped to the ROI), consuming the mask.
+				var minX = Int.MAX_VALUE; var minY = Int.MAX_VALUE
+				var maxX = Int.MIN_VALUE; var maxY = Int.MIN_VALUE
+				var count = 0
+				var top = 0
+				st[top++] = start
+				mk[start] = false
+				while(top > 0)
+				{
+					val idx = st[--top]
+					val x = idx % w
+					val y = idx / w
+					if(x < minX) minX = x
+					if(x > maxX) maxX = x
+					if(y < minY) minY = y
+					if(y > maxY) maxY = y
+					count++
 
-			if(count > loCount)
-			{
-				loCount = count
-				loL = minX; loT = minY; loR = maxX; loB = maxY
-			}
+					if(x > x0 && mk[idx - 1]) { mk[idx - 1] = false; st[top++] = idx - 1 }
+					if(x < x1 - 1 && mk[idx + 1]) { mk[idx + 1] = false; st[top++] = idx + 1 }
+					if(y > y0 && mk[idx - w]) { mk[idx - w] = false; st[top++] = idx - w }
+					if(y < y1 - 1 && mk[idx + w]) { mk[idx + w] = false; st[top++] = idx + w }
+				}
 
-			val bw = maxX - minX + 1
-			val bh = maxY - minY + 1
-			val isBar = bw >= minWidthPx && bh >= minHeightPx && bh <= maxHeightPx &&
-					bw.toFloat() / bh >= Config.MIN_ASPECT &&
-					count.toFloat() / (bw * bh) >= Config.MIN_FILL_RATIO &&
-					cornersOk(px, w, minX, minY, maxX, maxY)
-			if(isBar && count > barCount)
-			{
-				barCount = count
-				bL = minX; bT = minY; bR = maxX; bB = maxY
+				if(count > loCount)
+				{
+					loCount = count
+					loL = minX; loT = minY; loR = maxX; loB = maxY
+				}
+
+				val bw = maxX - minX + 1
+				val bh = maxY - minY + 1
+				val isBar = bw >= minWidthPx && bh >= minHeightPx && bh <= maxHeightPx &&
+						bw.toFloat() / bh >= Config.MIN_ASPECT &&
+						count.toFloat() / (bw * bh) >= Config.MIN_FILL_RATIO &&
+						cornersOk(px, w, minX, minY, maxX, maxY)
+				if(isBar && count > barCount)
+				{
+					barCount = count
+					bL = minX; bT = minY; bR = maxX; bB = maxY
+				}
 			}
 		}
 
@@ -321,5 +350,68 @@ class HealthBarDetector(
 	{
 		val c = px[y * w + x]
 		return isDominant((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)
+	}
+
+	/**
+	 * In-place morphological close (dilate then erode with a square radius) over the ROI, using tmp as
+	 * scratch. Separable (horizontal then vertical) so it stays cheap. Windows are clamped to the ROI.
+	 */
+	private fun morphClose(mk: BooleanArray, tmp: BooleanArray, x0: Int, y0: Int, x1: Int, y1: Int, w: Int)
+	{
+		val r = Config.CLOSE_RADIUS
+		if(r <= 0) return
+
+		// Dilate horizontal: mk -> tmp
+		for(y in y0 until y1)
+		{
+			val row = y * w
+			for(x in x0 until x1)
+			{
+				var v = false
+				val lo = maxOf(x0, x - r); val hi = minOf(x1 - 1, x + r)
+				var k = lo
+				while(k <= hi) { if(mk[row + k]) { v = true; break }; k++ }
+				tmp[row + x] = v
+			}
+		}
+		// Dilate vertical: tmp -> mk
+		for(y in y0 until y1)
+		{
+			val row = y * w
+			for(x in x0 until x1)
+			{
+				var v = false
+				val lo = maxOf(y0, y - r); val hi = minOf(y1 - 1, y + r)
+				var k = lo
+				while(k <= hi) { if(tmp[k * w + x]) { v = true; break }; k++ }
+				mk[row + x] = v
+			}
+		}
+		// Erode horizontal: mk -> tmp
+		for(y in y0 until y1)
+		{
+			val row = y * w
+			for(x in x0 until x1)
+			{
+				var v = true
+				val lo = maxOf(x0, x - r); val hi = minOf(x1 - 1, x + r)
+				var k = lo
+				while(k <= hi) { if(!mk[row + k]) { v = false; break }; k++ }
+				tmp[row + x] = v
+			}
+		}
+		// Erode vertical: tmp -> mk
+		for(y in y0 until y1)
+		{
+			val row = y * w
+			for(x in x0 until x1)
+			{
+				var v = true
+				val lo = maxOf(y0, y - r); val hi = minOf(y1 - 1, y + r)
+				var k = lo
+				while(k <= hi) { if(!tmp[k * w + x]) { v = false; break }; k++ }
+				mk[row + x] = v
+			}
+		}
 	}
 }
