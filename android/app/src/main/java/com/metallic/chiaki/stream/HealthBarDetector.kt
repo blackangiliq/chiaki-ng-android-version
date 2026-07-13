@@ -5,6 +5,7 @@ package com.metallic.chiaki.stream
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
+import android.util.Log
 import android.os.HandlerThread
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -108,6 +109,7 @@ class HealthBarDetector(
 	private var smoothedFps = 0f
 	private var lastRoiW = 0
 	private var lastRoiH = 0
+	private var analyzeLog = 0   // throttle counter for the deep per-blob diagnostic log
 
 	fun start()
 	{
@@ -336,6 +338,27 @@ class HealthBarDetector(
 			}
 		}
 
+		// DEEP DIAGNOSTIC (throttled): the largest green blob's metrics + each bar-filter gate's pass/fail,
+		// so we can see EXACTLY which gate flickers (bar <-> orange candidate) frame to frame.
+		if(++analyzeLog % 20 == 0 && loCount >= 0)
+		{
+			val dbw = loR - loL + 1
+			val dbh = loB - loT + 1
+			val fill = loCount.toFloat() / (dbw * dbh)
+			val asp = if(dbh > 0) dbw.toFloat() / dbh else 0f
+			val cor = countCorners(px, w, loL, loT, loR, loB)
+			Log.d("HBDetect", ("blob %dx%d asp=%.2f fill=%.2f cor=%d | w>=%.0f?%b h?%b asp>=%.1f?%b " +
+				"fill>=%.2f?%b cor>=%d?%b => isBar=%b | pos=(%.2f,%.2f) green=%d roi=%dx%d").format(
+				dbw, dbh, asp, fill, cor,
+				minWidthPx, dbw >= minWidthPx,
+				(dbh >= minHeightPx && dbh <= maxHeightPx),
+				Config.MIN_ASPECT, asp >= Config.MIN_ASPECT,
+				Config.MIN_FILL_RATIO, fill >= Config.MIN_FILL_RATIO,
+				Config.MIN_CORNERS, cor >= Config.MIN_CORNERS,
+				barCount >= 0,
+				(loL + loR) * 0.5f / w, (loT + loB) * 0.5f / h, targetPixels, lastRoiW, lastRoiH))
+		}
+
 		// A qualifying bar wins; otherwise report the largest blob + why it was rejected.
 		if(barCount >= 0)
 			return DetectionResult(targetPixels, true, true, "OK",
@@ -351,7 +374,11 @@ class HealthBarDetector(
 		return DetectionResult(targetPixels, false, false, "no target color", 0f, 0f, 0f, 0f)
 	}
 
-	private fun cornersOk(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Boolean
+	private fun cornersOk(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Boolean =
+		countCorners(px, w, minX, minY, maxX, maxY) >= Config.MIN_CORNERS
+
+	/** How many of the 4 (slightly inset) corners of the box are a dominant target pixel. */
+	private fun countCorners(px: IntArray, w: Int, minX: Int, minY: Int, maxX: Int, maxY: Int): Int
 	{
 		val bw = maxX - minX + 1
 		val bh = maxY - minY + 1
@@ -362,7 +389,7 @@ class HealthBarDetector(
 		if(isDominantAt(px, w, maxX - insetX, minY + insetY)) corners++
 		if(isDominantAt(px, w, minX + insetX, maxY - insetY)) corners++
 		if(isDominantAt(px, w, maxX - insetX, maxY - insetY)) corners++
-		return corners >= Config.MIN_CORNERS
+		return corners
 	}
 
 	/** Human-readable reason the largest blob failed the bar filter (for the debug HUD). */

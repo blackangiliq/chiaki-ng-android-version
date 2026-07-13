@@ -60,6 +60,9 @@ class AimAssist
 	@Volatile var aimPointY = 0.5f
 	@Volatile var aimActive = false
 
+	private var lastDetLogMs = 0L   // time-throttle the detection log (detector runs very fast)
+	private var tickLog = 0         // tick-throttle the aim-loop log
+
 	/** Feed a fresh detection (or null when nothing is found). Called at the detection rate. */
 	fun onDetection(r: DetectionResult?, nowMs: Long)
 	{
@@ -100,7 +103,14 @@ class AimAssist
 		aimActive = true
 		lastDetectMs = nowMs
 		haveTarget = true
-		Log.d(TAG, "det isBar=true aim=(%.3f,%.3f) barW=%.3f".format(posX, posY, r.widthN))
+		// Raw bar rect (normalized) + resulting aim point — shows WHERE in the frame the bar is caught
+		// and where the head aim lands. Time-throttled (~12/s) since the detector runs very fast.
+		if(nowMs - lastDetLogMs >= 80L)
+		{
+			lastDetLogMs = nowMs
+			Log.d(TAG, "det L=%.2f T=%.2f R=%.2f B=%.2f cx=%.3f bW=%.3f -> aim=(%.3f,%.3f)".format(
+				r.leftN, r.topN, r.rightN, r.bottomN, r.centerXN, r.widthN, posX, posY))
+		}
 	}
 
 	/** Advance the smoothing one aim-loop step and return the right-stick output (±32767). */
@@ -151,7 +161,12 @@ class AimAssist
 
 		// Near-target damping: fade the output to a gentle floor as we settle onto the head.
 		val nearDamp = if(dist < nearHoldN) max(0.25f, dist / nearHoldN) else 1f
-		return stick(smoothX * nearDamp, smoothY * nearDamp)
+		val outX = smoothX * nearDamp
+		val outY = smoothY * nearDamp
+		if(++tickLog % 10 == 0)
+			Log.d(TAG, "tick d=(%.3f,%.3f) dist=%.3f pow=%.2f distMul=%.2f nd=%.2f out=(%.3f,%.3f)".format(
+				dx, dy, dist, power, distMul, nearDamp, outX, outY))
+		return stick(outX, outY)
 	}
 
 	private fun stick(x: Float = smoothX, y: Float = smoothY): Pair<Short, Short>
