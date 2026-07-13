@@ -33,6 +33,18 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "ndk;23.1.7779620" "cmake;3.22.1" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Configure persistent debug signing key
+        working-directory: android
+        run: |
+          # Sign every build with the committed keystore so installs update in place
+          # (adb install -r) without a signature mismatch, preserving app data across rebuilds.
+          {
+            echo "chiakiKeystore=chiaki-signing.keystore"
+            echo "chiakiKeystorePW=android"
+            echo "chiakiKeyAlias=chiaki"
+            echo "chiakiKeyPW=android"
+          } > local.properties
+
       - name: Build debug APK
         working-directory: android
         run: |
